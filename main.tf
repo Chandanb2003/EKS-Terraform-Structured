@@ -1,23 +1,12 @@
-terraform {
-  required_version = ">= 1.5"
-
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
 provider "aws" {
-  region = "ap-south-1"
+  region = var.region
 }
 
 ############################
 # VPC
 ############################
 resource "aws_vpc" "vpc" {
-  cidr_block           = "10.0.0.0/16"
+  cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
 
@@ -40,31 +29,31 @@ resource "aws_route_table" "public_rt" {
 }
 
 ############################
-# PUBLIC SUBNETS (ELB READY)
+# PUBLIC SUBNETS
 ############################
 resource "aws_subnet" "a" {
   vpc_id                  = aws_vpc.vpc.id
-  cidr_block              = "10.0.1.0/24"
+  cidr_block              = var.subnet_a_cidr
   availability_zone       = "ap-south-1a"
   map_public_ip_on_launch = true
 
   tags = {
-    Name                                = "tetris-subnet-a"
-    "kubernetes.io/cluster/tetris-eks" = "shared"
-    "kubernetes.io/role/elb"           = "1"
+    Name = "tetris-subnet-a"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+    "kubernetes.io/role/elb" = "1"
   }
 }
 
 resource "aws_subnet" "b" {
   vpc_id                  = aws_vpc.vpc.id
-  cidr_block              = "10.0.2.0/24"
+  cidr_block              = var.subnet_b_cidr
   availability_zone       = "ap-south-1b"
   map_public_ip_on_launch = true
 
   tags = {
-    Name                                = "tetris-subnet-b"
-    "kubernetes.io/cluster/tetris-eks" = "shared"
-    "kubernetes.io/role/elb"           = "1"
+    Name = "tetris-subnet-b"
+    "kubernetes.io/cluster/${var.cluster_name}" = "shared"
+    "kubernetes.io/role/elb" = "1"
   }
 }
 
@@ -82,7 +71,7 @@ resource "aws_route_table_association" "b" {
 # IAM ROLES
 ############################
 resource "aws_iam_role" "cluster_role" {
-  name = "tetris-eks-cluster-role"
+  name = "${var.cluster_name}-cluster-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -100,7 +89,7 @@ resource "aws_iam_role_policy_attachment" "cluster_policy" {
 }
 
 resource "aws_iam_role" "node_role" {
-  name = "tetris-eks-node-role"
+  name = "${var.cluster_name}-node-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -131,7 +120,7 @@ resource "aws_iam_role_policy_attachment" "node_ecr" {
 # EKS CLUSTER
 ############################
 resource "aws_eks_cluster" "eks" {
-  name     = "tetris-eks"
+  name     = var.cluster_name
   role_arn = aws_iam_role.cluster_role.arn
 
   vpc_config {
@@ -149,12 +138,12 @@ resource "aws_eks_cluster" "eks" {
 # NODE GROUP
 ############################
 resource "aws_eks_node_group" "nodes" {
-  cluster_name    = aws_eks_cluster.eks.name
+  cluster_name    = var.cluster_name
   node_group_name = "main"
   node_role_arn   = aws_iam_role.node_role.arn
   subnet_ids      = [aws_subnet.a.id, aws_subnet.b.id]
 
-  instance_types = ["t3.small"]
+  instance_types = [var.instance_type]
 
   scaling_config {
     desired_size = 2
